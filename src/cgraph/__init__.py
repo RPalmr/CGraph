@@ -12,3 +12,7 @@ __all__ = [
     "latent_projection",
     "validate_adjustment",
 ]
+
+from .symbolic import identify, identify_family
+
+__all__ += ["identify", "identify_family"]
