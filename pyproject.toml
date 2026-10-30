@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cgraph-audit"
-version = "0.3.0"
+version = "0.4.0"
 description = "Causal discovery from observational data with explicit graph uncertainty"
 readme = "README.md"
 license = "MIT"

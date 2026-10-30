@@ -50,6 +50,7 @@ def test_data_first_discovery_cli(tmp_path):
     np.savetxt(data, np.column_stack((a, b, c)), delimiter=",", header="A,B,C", comments="")
     output = tmp_path / "discovered.json"
     dot = tmp_path / "discovered.dot"
+    grapl = tmp_path / "discovered.grapl"
     assert (
         main(
             [
@@ -60,6 +61,8 @@ def test_data_first_discovery_cli(tmp_path):
                 str(output),
                 "--dot",
                 str(dot),
+                "--grapl",
+                str(grapl),
                 "--timeout",
                 "60",
             ]
@@ -70,3 +73,4 @@ def test_data_first_discovery_cli(tmp_path):
     assert value["graph"]["kind"] == "cpdag"
     assert value["status"] == "completed"
     assert dot.read_text().startswith("digraph CGraph")
+    assert grapl.read_text() == '"CGraph";\nA;\nB;\nC;\nA -> C;\nB -> C;\n'

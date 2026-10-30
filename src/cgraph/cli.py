@@ -31,7 +31,7 @@ def _parse(content):
 def main(argv=None):
     """Emit mathematical results; computational failure is distinct from nonidentification."""
     parser = argparse.ArgumentParser(prog="cgraph", description=__doc__)
-    parser.add_argument("--version", action="version", version="cgraph-audit 0.3.0")
+    parser.add_argument("--version", action="version", version="cgraph-audit 0.4.0")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("factorize", "intervene", "identify"):
         command = commands.add_parser(name)
