@@ -301,6 +301,10 @@ def identify(
     timeout: float = 10.0,
 ) -> IdentificationResult:
     """Apply Shpitser–Pearl ID to a joint intervention under a semi-Markovian ADMG."""
+    if not isinstance(graph, ADMG):
+        raise ValueError(
+            "Identification requires an explicit DAG/ADMG; unresolved discovery graphs cannot be substituted"
+        )
     if type(max_calls) is not int or max_calls < 1 or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("Identification budgets must be positive and finite")
     x, y = graph.validate_nodes(treatment), graph.validate_nodes(outcome)

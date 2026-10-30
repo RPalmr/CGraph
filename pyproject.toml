@@ -4,14 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cgraph-audit"
-version = "0.2.0"
-description = "Markov factorization, truncated interventions, and causal identification"
+version = "0.3.0"
+description = "Causal discovery from observational data with explicit graph uncertainty"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{name = "CGraph contributors"}]
-dependencies = []
+dependencies = [
+    "causal-learn==0.1.4.8", "numpy>=1.26,<3",
+]
 
 [project.scripts]
 cgraph = "cgraph.cli:main"

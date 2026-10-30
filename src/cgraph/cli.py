@@ -1,11 +1,13 @@
-"""Command line interface exposing only factorize, intervene, and identify."""
+"""Discover causal structures from CSV data and reason under explicit causal graphs."""
 
 import argparse
+import csv
 import json
 import sys
 from pathlib import Path
 
 from ._serialization import atomic_write
+from .discovery import discover
 from .distributions import factorize, intervene
 from .graph import ADMG
 from .symbolic import identify
@@ -29,7 +31,7 @@ def _parse(content):
 def main(argv=None):
     """Emit mathematical results; computational failure is distinct from nonidentification."""
     parser = argparse.ArgumentParser(prog="cgraph", description=__doc__)
-    parser.add_argument("--version", action="version", version="cgraph-audit 0.2.0")
+    parser.add_argument("--version", action="version", version="cgraph-audit 0.3.0")
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("factorize", "intervene", "identify"):
         command = commands.add_parser(name)
@@ -44,8 +46,39 @@ def main(argv=None):
             command.add_argument("--timeout", type=float, default=10.0)
             command.add_argument("--max-calls", type=int, default=10000)
             command.add_argument("--max-sets", type=int, default=10000)
+    discovery = commands.add_parser("discover", help="Estimate a CPDAG with PC or a PAG with FCI")
+    discovery.add_argument("--data", required=True, help="Numeric continuous CSV with a header")
+    discovery.add_argument("--method", choices=("pc", "fci"), default="pc")
+    discovery.add_argument("--alpha", type=float, default=0.01)
+    discovery.add_argument("--timeout", type=float, default=30.0)
+    discovery.add_argument("--max-tests", type=int, default=10000)
+    discovery.add_argument("--max-conditioning", type=int)
+    discovery.add_argument("--out")
+    discovery.add_argument("--dot")
     args = parser.parse_args(argv)
     try:
+        if args.command == "discover":
+            with Path(args.data).open(newline="", encoding="utf-8") as stream:
+                reader = csv.reader(stream)
+                names = next(reader, None)
+                if names is None:
+                    raise ValueError("CSV must contain a header and numeric observations")
+                rows = [[float(v) for v in row] for row in reader]
+            result = discover(
+                rows,
+                names=names,
+                method=args.method,
+                alpha=args.alpha,
+                timeout=args.timeout,
+                max_tests=args.max_tests,
+                max_conditioning=args.max_conditioning,
+            )
+            content = result.to_json(args.out)
+            if not args.out:
+                print(content, end="")
+            if args.dot and result.graph:
+                atomic_write(args.dot, result.graph.to_dot())
+            return 0 if result.status == "completed" else 5 if result.status == "error" else 4
         graph = ADMG.from_dict(_parse(Path(args.graph).read_text(encoding="utf-8")))
         code = 0
         if args.command == "factorize":

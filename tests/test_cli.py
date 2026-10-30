@@ -38,3 +38,35 @@ def test_three_commands(tmp_path):
     assert main(["factorize", "--graph", str(path)]) == 2
     path.write_text('{"kind":"dag","kind":"admg"}')
     assert main(["factorize", "--graph", str(path)]) == 2
+
+
+def test_data_first_discovery_cli(tmp_path):
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    a, b = rng.normal(size=(2, 5000))
+    c = a + b + rng.normal(size=5000)
+    data = tmp_path / "cohort.csv"
+    np.savetxt(data, np.column_stack((a, b, c)), delimiter=",", header="A,B,C", comments="")
+    output = tmp_path / "discovered.json"
+    dot = tmp_path / "discovered.dot"
+    assert (
+        main(
+            [
+                "discover",
+                "--data",
+                str(data),
+                "--out",
+                str(output),
+                "--dot",
+                str(dot),
+                "--timeout",
+                "60",
+            ]
+        )
+        == 0
+    )
+    value = json.loads(output.read_text())
+    assert value["graph"]["kind"] == "cpdag"
+    assert value["status"] == "completed"
+    assert dot.read_text().startswith("digraph CGraph")

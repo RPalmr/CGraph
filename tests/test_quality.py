@@ -14,13 +14,13 @@ def test_python_sources_use_docstrings_without_comment_tokens():
                 ), path
 
 
-def test_package_exports_only_three_operations_and_supporting_types():
+def test_package_exports_discovery_and_symbolic_support():
     import inspect
 
     import cgraph
 
     operations = {name for name in cgraph.__all__ if inspect.isfunction(getattr(cgraph, name))}
-    assert operations == {"factorize", "intervene", "identify"}
+    assert operations == {"discover", "factorize", "intervene", "identify"}
     assert not hasattr(cgraph, "CausalAudit")
     assert not hasattr(cgraph, "Policy")
     assert not hasattr(cgraph, "identify_conditional")
