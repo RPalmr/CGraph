@@ -59,6 +59,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == "discover":
+            outputs = [Path(path).resolve() for path in (args.out, args.grapl, args.dot) if path]
+            if len(set(outputs)) != len(outputs) or Path(args.data).resolve() in outputs:
+                raise ValueError(
+                    "Graph output paths must be distinct from each other and the input dataset"
+                )
             with Path(args.data).open(newline="", encoding="utf-8") as stream:
                 reader = csv.reader(stream)
                 names = next(reader, None)

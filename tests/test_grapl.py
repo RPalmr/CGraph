@@ -149,3 +149,27 @@ def test_cli_preserves_failure_status_without_creating_native_graph(monkeypatch,
     assert cli.main(["discover", "--data", str(data), "--out", str(target)]) == 4
     assert not target.exists()
     assert '"status": "resource_limited"' in capsys.readouterr().err
+
+
+def test_cli_rejects_colliding_artifact_paths_before_discovery(monkeypatch, tmp_path, collider):
+    import cgraph.cli as cli
+
+    data = tmp_path / "input.csv"
+    original = "A,B,C\n1,2,3\n"
+    data.write_text(original)
+    calls = []
+
+    def discover(*args, **kwargs):
+        calls.append(True)
+        return DiscoveryResult("completed", collider, "pc", ())
+
+    monkeypatch.setattr(cli, "discover", discover)
+    output = str(tmp_path / "result.json")
+    for options in (
+        ["--out", output, "--grapl", output],
+        ["--out", output, "--dot", output],
+        ["--grapl", str(data)],
+    ):
+        assert cli.main(["discover", "--data", str(data), *options]) == 2
+    assert not calls
+    assert data.read_text() == original
