@@ -1,6 +1,6 @@
 # CGraph
 
-CGraph uses causal graphs to model how a system behaves and how interventions change it. Given the graph's assumptions, it determines which intervention effects can be identified from observations.
+CGraph uses causal graphs to describe how variables influence one another and what happens when you intervene. It determines which intervention effects can be identified from observations under the graph's assumptions.
 
 Three operations: **factorisation, intervention and identification**. Python 3.11+, with no runtime dependencies.
 
