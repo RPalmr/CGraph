@@ -11,7 +11,7 @@ from pathlib import Path
 from .graph import ADMG
 from .query import CausalQuery
 from .reports import AuditReport, Policy, atomic_write
-from .symbolic import identify
+from .symbolic import identify, identify_conditional
 
 
 def _load(path):
@@ -108,6 +108,7 @@ def main(argv=None):
     identification.add_argument("--graph", required=True)
     identification.add_argument("--query", required=True)
     identification.add_argument("--out")
+    identification.add_argument("--given", nargs="*", default=[])
     identification.add_argument("--timeout", type=float, default=10.0)
     identification.add_argument("--max-calls", type=int, default=10000)
     audit = commands.add_parser("audit", help="Audit a CSV dataset using a JSON configuration")
@@ -125,7 +126,13 @@ def main(argv=None):
         if args.command == "identify":
             graph = ADMG.from_dict(_load(args.graph))
             query = CausalQuery(**_load(args.query))
-            result = identify(graph, query, timeout=args.timeout, max_calls=args.max_calls)
+            result = (
+                identify_conditional(
+                    graph, query, args.given, timeout=args.timeout, max_calls=args.max_calls
+                )
+                if args.given
+                else identify(graph, query, timeout=args.timeout, max_calls=args.max_calls)
+            )
             _emit({"graph": graph.to_dict(), "query": asdict(query), **result.to_dict()}, args.out)
             return 4 if result.status == "resource_limited" else 0
         if args.command == "audit":

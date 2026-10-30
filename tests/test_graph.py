@@ -55,3 +55,31 @@ def test_adjustment_and_projection():
     assert projected.directed == (("t", "y"),)
     with pytest.raises(TimeoutError):
         find_adjustment(graph, "t", "y", max_sets=1)
+
+
+def test_admg_separation_against_explicit_latent_dag_oracle():
+    nodes = tuple("abc")
+    edges = tuple(itertools.combinations(nodes, 2))
+    for directed_mask, bidirected_mask in itertools.product(range(8), repeat=2):
+        graph = ADMG(
+            nodes,
+            tuple(e for i, e in enumerate(edges) if directed_mask & (1 << i)),
+            tuple(e for i, e in enumerate(edges) if bidirected_mask & (1 << i)),
+        )
+        oracle = nx.DiGraph()
+        oracle.add_nodes_from(nodes)
+        oracle.add_edges_from(graph.directed)
+        for i, (u, v) in enumerate(graph.bidirected):
+            oracle.add_edges_from(((f"latent_{i}", u), (f"latent_{i}", v)))
+        for a, b in itertools.combinations(nodes, 2):
+            other = set(nodes) - {a, b}
+            for given in (set(), other):
+                assert graph.separated(a, b, given) == nx.is_d_separator(oracle, {a}, {b}, given)
+
+
+def test_graph_caches_cannot_be_mutated():
+    graph = DAG(("a", "b"), (("a", "b"),))
+    with pytest.raises(TypeError):
+        graph.parents["b"] = frozenset()
+    with pytest.raises(TypeError):
+        graph.children["a"] = frozenset()

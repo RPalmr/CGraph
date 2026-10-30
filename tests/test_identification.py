@@ -102,3 +102,44 @@ def test_random_admgs_against_exact_latent_scm_interventions():
                 actual = result.expression.evaluate(observational, {t: 1, y: 1})
                 expected = joint((t, 1)).probability({y: 1})
                 assert actual == pytest.approx(expected, abs=1e-10), (graph, t, y, result)
+            from cgraph.symbolic import identify_conditional
+
+            conditioned = next(v for v in nodes if v not in (t, y))
+            conditional = identify_conditional(
+                graph, CausalQuery.interventional(treatment=t, outcome=y), given=(conditioned,)
+            )
+            if conditional.status == "identified":
+                intervened = joint((t, 1))
+                expected_conditional = intervened.probability(
+                    {y: 1, conditioned: 1}
+                ) / intervened.probability({conditioned: 1})
+                actual_conditional = conditional.expression.evaluate(
+                    observational, {t: 1, y: 1, conditioned: 1}
+                )
+                assert actual_conditional == pytest.approx(expected_conditional, abs=1e-10)
+
+
+def test_conditional_identification_uses_exchange_before_joint_identification():
+    from cgraph.symbolic import identify_conditional
+
+    graph = ADMG(("x", "z", "y"), (("x", "z"), ("z", "y")), (("x", "z"),))
+    query = CausalQuery.interventional(treatment="x", outcome="y")
+    assert identify(graph, query).status == "not_identified"
+    result = identify_conditional(graph, query, given=("z",))
+    assert result.status == "identified"
+    assert result.trace[0]["rule"] == "idc_exchange_observation"
+    with pytest.raises(TypeError):
+        result.trace[0]["rule"] = "modified"
+    with pytest.raises(ValueError):
+        identify_conditional(graph, query, given=("x",))
+
+
+def test_structural_scenarios_and_joint_intervention():
+    from cgraph.scenarios import add_latent_confounding, audit_graph_scenarios
+
+    graph = DAG(("a", "b", "y"), (("a", "y"), ("b", "y")))
+    query = CausalQuery.interventional(treatment=("a", "b"), outcome="y")
+    assert identify(graph, query).status == "identified"
+    scenario = add_latent_confounding(graph, (("a", "y"),))
+    check = audit_graph_scenarios(graph, query, [("hidden_common_cause", scenario)])
+    assert check.metrics["scenarios"][0]["identification"]["status"] == "not_identified"

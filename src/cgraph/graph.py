@@ -6,7 +6,7 @@ import hashlib
 import itertools
 import json
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from types import MappingProxyType
@@ -29,7 +29,8 @@ class ADMG:
         nodes = tuple(self.nodes)
         if any(not isinstance(n, str) or not n for n in nodes):
             raise ValueError("Node identifiers must be nonempty strings")
-        if len(nodes) != len(set(nodes)):
+        node_set = set(nodes)
+        if len(nodes) != len(node_set):
             raise ValueError("Duplicate node identifiers")
         edges = []
         for collection, symmetric in ((self.directed, False), (self.bidirected, True)):
@@ -38,7 +39,7 @@ class ADMG:
                 if len(edge) != 2:
                     raise ValueError("Edges must have two endpoints")
                 u, v = edge
-                if u == v or u not in nodes or v not in nodes:
+                if u == v or u not in node_set or v not in node_set:
                     raise ValueError(f"Invalid edge: {edge!r}")
                 clean.add(tuple(sorted((u, v))) if symmetric else (u, v))
             edges.append(tuple(sorted(clean)))
@@ -145,41 +146,42 @@ class ADMG:
         return tuple(result)
 
     def separated(self, x: Iterable[str], y: Iterable[str], given: Iterable[str] = ()) -> bool:
-        """Test m-separation via an exact latent expansion and ancestral moralization."""
+        """Test m-separation in linear traversal time using a latent-expanded active-trail search."""
         x, y, z = (self.validate_nodes(v) for v in (x, y, given))
         if x & y or (x | y) & z:
             raise ValueError("Separation arguments must be disjoint")
         parents = {n: set(p) for n, p in self.parents.items()}
+        children = {n: set(c) for n, c in self.children.items()}
         for i, (u, v) in enumerate(self.bidirected):
             latent = ("latent", i)
             parents[latent] = set()
+            children[latent] = {u, v}
             parents[u].add(latent)
             parents[v].add(latent)
-        ancestral = set(x | y | z)
-        stack = list(ancestral)
+        ancestors = set(z)
+        stack = list(z)
         while stack:
-            for p in parents[stack.pop()]:
-                if p not in ancestral:
-                    ancestral.add(p)
-                    stack.append(p)
-        moral = {n: set() for n in ancestral}
-        for n in ancestral:
-            ps = parents[n] & ancestral
-            for p in ps:
-                moral[n].add(p)
-                moral[p].add(n)
-            for a, b in itertools.combinations(ps, 2):
-                moral[a].add(b)
-                moral[b].add(a)
-        seen = set(x)
-        stack = list(x)
-        while stack:
-            n = stack.pop()
-            if n in y:
+            for parent in parents[stack.pop()]:
+                if parent not in ancestors:
+                    ancestors.add(parent)
+                    stack.append(parent)
+        queue, visited = [(n, True) for n in x], set()
+        while queue:
+            node, upward = queue.pop()
+            if (node, upward) in visited:
+                continue
+            visited.add((node, upward))
+            if node not in z and node in y:
                 return False
-            for adjacent in moral[n] - z - seen:
-                seen.add(adjacent)
-                stack.append(adjacent)
+            if upward:
+                if node not in z:
+                    queue.extend((p, True) for p in parents[node])
+                    queue.extend((c, False) for c in children[node])
+            else:
+                if node not in z:
+                    queue.extend((c, False) for c in children[node])
+                if node in ancestors:
+                    queue.extend((p, True) for p in parents[node])
         return True
 
     def to_dict(self) -> dict:
@@ -194,7 +196,12 @@ class ADMG:
     @classmethod
     def from_dict(cls, value: dict) -> ADMG:
         """Parse the explicit graph schema; reject unknown graph kinds and keys."""
-        if not isinstance(value, dict) or set(value) - {"kind", "nodes", "directed", "bidirected"}:
+        if not isinstance(value, Mapping) or set(value) - {
+            "kind",
+            "nodes",
+            "directed",
+            "bidirected",
+        }:
             raise ValueError("Invalid graph schema")
         kind = value.get("kind")
         if kind not in ("dag", "admg"):

@@ -8,9 +8,11 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
+from types import MappingProxyType
 
 from .graph import ADMG
 from .query import CausalQuery
+from .reports import freeze, thaw
 
 
 @dataclass(frozen=True)
@@ -167,6 +169,8 @@ class DiscreteDistribution:
         self.domains = {
             n: tuple(dict.fromkeys(k[i] for k in self.masses)) for i, n in enumerate(self.nodes)
         }
+        self.masses = MappingProxyType(self.masses)
+        self.domains = MappingProxyType(self.domains)
         self._cache = {}
 
     def probability(self, assignment) -> float:
@@ -192,14 +196,18 @@ class IdentificationResult:
     witness: dict | None = None
     reason: str = ""
 
+    def __post_init__(self):
+        object.__setattr__(self, "trace", tuple(freeze(v) for v in self.trace))
+        object.__setattr__(self, "witness", freeze(self.witness))
+
     def to_dict(self):
         """Serialize the result and its algorithm certificate."""
         return {
             "status": self.status,
             "expression": self.expression.to_dict() if self.expression else None,
             "formula": str(self.expression) if self.expression else None,
-            "trace": list(self.trace),
-            "witness": self.witness,
+            "trace": thaw(self.trace),
+            "witness": thaw(self.witness),
             "reason": self.reason,
         }
 
@@ -386,3 +394,80 @@ def identify_family(graphs, query, *, max_graphs=100, **kwargs):
         "common_functional_established": common,
         "reason": "Structural expression equality is sufficient; unequal expressions are not proof of different functionals",
     }
+
+
+def identify_conditional(
+    graph: ADMG, query: CausalQuery, given, *, max_calls=10000, timeout=10.0
+) -> IdentificationResult:
+    """Apply IDC to P(outcome | do(treatment), given) under the supplied ADMG.
+
+    Rule two exchanges eligible observations for interventions. Remaining
+    conditioning is performed only after identifying the required joint kernel.
+    A ratio of arbitrary ID outputs is not used as a substitute for IDC.
+    """
+    if query.kind != "interventional":
+        raise ValueError("IDC requires an interventional distribution query")
+    if max_calls < 1 or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Identification budgets must be positive and finite")
+    x, y, z = (graph.validate_nodes(nodes) for nodes in (query.treatment, query.outcome, given))
+    if (x | y) & z:
+        raise ValueError("Conditioning variables must be disjoint from query targets")
+    trace, deadline, calls = [], time.monotonic() + timeout, 0
+    while z:
+        moved = False
+        for node in sorted(z):
+            calls += 1
+            if calls >= max_calls or time.monotonic() > deadline:
+                return IdentificationResult(
+                    "resource_limited",
+                    trace=tuple(trace),
+                    reason="Conditional identification budget exhausted",
+                )
+            mutilated = graph.intervene(x)
+            mutilated = ADMG(
+                mutilated.nodes,
+                tuple((a, b) for a, b in mutilated.directed if a != node),
+                mutilated.bidirected,
+            )
+            if mutilated.separated(y, (node,), x | (z - {node})):
+                trace.append(
+                    {
+                        "rule": "idc_exchange_observation",
+                        "variable": node,
+                        "treatment": sorted(x),
+                        "given": sorted(z),
+                    }
+                )
+                x, z = x | {node}, z - {node}
+                moved = True
+                break
+        if not moved:
+            break
+    remaining_time = deadline - time.monotonic()
+    if remaining_time <= 0:
+        return IdentificationResult(
+            "resource_limited",
+            trace=tuple(trace),
+            reason="Conditional identification deadline reached",
+        )
+    joint = identify(
+        graph,
+        CausalQuery.interventional(treatment=tuple(x), outcome=tuple(y | z)),
+        max_calls=max_calls - calls,
+        timeout=remaining_time,
+    )
+    trace.extend(joint.trace)
+    if joint.status != "identified":
+        return IdentificationResult(
+            joint.status, trace=tuple(trace), witness=joint.witness, reason=joint.reason
+        )
+    expression = joint.expression
+    if z:
+        expression = Expression("quotient", terms=(expression, marginal(y, expression)))
+        trace.append({"rule": "idc_normalize", "outcome": sorted(y), "given": sorted(z)})
+    return IdentificationResult(
+        "identified",
+        expression,
+        tuple(trace),
+        reason="Conditional identification under the supplied semi-Markovian graph and observed support",
+    )

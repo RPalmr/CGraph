@@ -3,7 +3,7 @@
 from .graph import ADMG, DAG, find_adjustment, latent_projection, validate_adjustment
 from .query import CausalQuery
 from .reports import AuditReport, CheckResult, Policy
-from .symbolic import identify, identify_family
+from .symbolic import identify, identify_conditional, identify_family
 
 __version__ = "0.1.0"
 __all__ = [
@@ -14,6 +14,7 @@ __all__ = [
     "CheckResult",
     "Policy",
     "identify",
+    "identify_conditional",
     "identify_family",
     "find_adjustment",
     "latent_projection",
