@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cgraph-audit"
+version = "0.1.0"
+description = "Causal graph identification, auditing, and sensitivity analysis"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "CGraph contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+stats = ["numpy>=1.26,<3", "scipy>=1.12,<2", "pandas>=2.1,<4", "scikit-learn>=1.4,<2"]
+
+[project.scripts]
+cgraph = "cgraph.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "hypothesis>=6", "ruff>=0.9", "build>=1.2", "numpy>=1.26,<3", "scipy>=1.12,<2", "pandas>=2.1,<4", "scikit-learn>=1.4,<2", "networkx>=3.2,<4"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cgraph"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
