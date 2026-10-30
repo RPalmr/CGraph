@@ -7,6 +7,8 @@ name = "cgraph-audit"
 version = "0.1.0"
 description = "Causal graph identification, auditing, and sensitivity analysis"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{name = "CGraph contributors"}]
 dependencies = []
@@ -33,3 +35,10 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E501"]
+
+[project.urls]
+Repository = "https://github.com/RPalmr/CGraph"
+Issues = "https://github.com/RPalmr/CGraph/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "examples", "benchmarks", "scripts", "README.md", "LICENSE", "pyproject.toml", "uv.lock"]

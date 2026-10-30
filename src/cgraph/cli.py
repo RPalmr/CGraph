@@ -133,7 +133,15 @@ def main(argv=None):
                 if args.given
                 else identify(graph, query, timeout=args.timeout, max_calls=args.max_calls)
             )
-            _emit({"graph": graph.to_dict(), "query": asdict(query), **result.to_dict()}, args.out)
+            _emit(
+                {
+                    "graph": graph.to_dict(),
+                    "query": asdict(query),
+                    "given": args.given,
+                    **result.to_dict(),
+                },
+                args.out,
+            )
             return 4 if result.status == "resource_limited" else 0
         if args.command == "audit":
             return _audit(args)

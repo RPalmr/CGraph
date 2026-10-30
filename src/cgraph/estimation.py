@@ -29,6 +29,18 @@ class EffectEstimate:
     scale: str = "mean_difference"
     method: str = "cross_fitted_aipw"
 
+    def __post_init__(self):
+        lo, hi = self.confidence_interval
+        if (
+            not np.isfinite([self.value, self.standard_error, lo, hi]).all()
+            or self.standard_error < 0
+            or not lo <= self.value <= hi
+            or not 0 < self.confidence_level < 1
+            or self.n < 2
+        ):
+            raise ValueError("Invalid or nonfinite effect estimate")
+        object.__setattr__(self, "confidence_interval", (lo, hi))
+
     def to_dict(self):
         """Return JSON-compatible point and uncertainty information."""
         return asdict(self)

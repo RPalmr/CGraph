@@ -36,7 +36,7 @@ class ADMG:
         for collection, symmetric in ((self.directed, False), (self.bidirected, True)):
             clean = set()
             for edge in collection:
-                if len(edge) != 2:
+                if isinstance(edge, str) or not isinstance(edge, (tuple, list)) or len(edge) != 2:
                     raise ValueError("Edges must have two endpoints")
                 u, v = edge
                 if u == v or u not in node_set or v not in node_set:
@@ -203,6 +203,8 @@ class ADMG:
             "bidirected",
         }:
             raise ValueError("Invalid graph schema")
+        if "nodes" not in value or not isinstance(value["nodes"], (tuple, list)):
+            raise ValueError("Graph nodes must be an explicit sequence")
         kind = value.get("kind")
         if kind not in ("dag", "admg"):
             raise ValueError("Graph kind must be dag or admg")

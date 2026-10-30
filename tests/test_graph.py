@@ -83,3 +83,17 @@ def test_graph_caches_cannot_be_mutated():
         graph.parents["b"] = frozenset()
     with pytest.raises(TypeError):
         graph.children["a"] = frozenset()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"kind": "dag", "nodes": "ab"},
+        {"kind": "pag", "nodes": ["a", "b"]},
+        {"kind": "dag", "nodes": ["a", "b"], "directed": ["ab"]},
+        {"kind": "dag"},
+    ],
+)
+def test_malformed_graph_schemas_fail_explicitly(value):
+    with pytest.raises(ValueError):
+        ADMG.from_dict(value)

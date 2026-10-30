@@ -25,3 +25,16 @@ dist/
 .coverage
 htmlcov/
 .DS_Store
+.hypothesis/
+.tox/
+.nox/
+.coverage.*
+coverage.xml
+*.log
+.aws/
+.claude/
+.chatgpt/
+.cursor/
+.mcp.json
+shared-notes/
+COMPACTION*.md

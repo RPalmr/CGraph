@@ -44,7 +44,10 @@ def evalue(effect: RiskRatio) -> dict:
 
     def transform(rr):
         rr = max(rr, 1 / rr)
-        return rr + math.sqrt(rr) * math.sqrt(rr - 1)
+        result = rr + math.sqrt(rr) * math.sqrt(rr - 1)
+        if not math.isfinite(result):
+            raise ValueError("E-value exceeds the representable floating-point range")
+        return result
 
     interval = None
     if effect.confidence_interval:
