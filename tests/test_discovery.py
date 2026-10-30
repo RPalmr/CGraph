@@ -156,3 +156,47 @@ def test_conditioning_budget_and_parent_random_state():
     assert result.status == "resource_limited", result.to_json()
     assert result.graph is None
     assert before[0] == after[0] and np.array_equal(before[1], after[1]) and before[2:] == after[2:]
+
+
+def test_cpdag_validation_rejects_unjustified_directions_and_cycles():
+    from causallearn.graph.GeneralGraph import GeneralGraph
+    from causallearn.graph.GraphNode import GraphNode
+
+    from cgraph._discovery_worker import _cpdag_consistent
+
+    nodes = [GraphNode(n) for n in ("A", "B", "C")]
+    graph = GeneralGraph(nodes)
+    graph.add_directed_edge(nodes[0], nodes[1])
+    graph.add_directed_edge(nodes[1], nodes[2])
+    graph.add_directed_edge(nodes[2], nodes[0])
+    assert not _cpdag_consistent(graph, ("A", "B", "C"))
+    graph = GeneralGraph(nodes)
+    graph.add_directed_edge(nodes[0], nodes[1])
+    assert not _cpdag_consistent(graph, ("A", "B", "C"))
+
+
+def test_pag_validation_rejects_contradictory_ancestry():
+    from causallearn.graph.Edge import Edge
+    from causallearn.graph.Endpoint import Endpoint
+    from causallearn.graph.GeneralGraph import GeneralGraph
+    from causallearn.graph.GraphNode import GraphNode
+
+    from cgraph._discovery_worker import _ancestral_consistent
+
+    nodes = [GraphNode(n) for n in ("A", "B", "C")]
+    graph = GeneralGraph(nodes)
+    graph.add_directed_edge(nodes[0], nodes[1])
+    graph.add_directed_edge(nodes[1], nodes[2])
+    graph.add_edge(Edge(nodes[0], nodes[2], Endpoint.ARROW, Endpoint.ARROW))
+    assert not _ancestral_consistent(graph, ("A", "B", "C"))
+
+
+def test_discovery_schema_rejects_wrong_method_graph_classes(discovered_collider):
+    record = discovered_collider.to_dict()
+    record["method"] = "fci"
+    with pytest.raises(ValueError, match="Graph class"):
+        DiscoveryResult.from_json(json.dumps(record))
+    record = discovered_collider.to_dict()
+    record["graph"]["unexpected"] = True
+    with pytest.raises(ValueError, match="schema"):
+        DiscoveryResult.from_json(json.dumps(record))

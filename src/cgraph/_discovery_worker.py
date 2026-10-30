@@ -106,6 +106,33 @@ def _cpdag_consistent(graph, names):
     return bool(np.array_equal(dag2cpdag(dag).graph, matrix))
 
 
+def _ancestral_consistent(graph, names):
+    """Reject compelled directed cycles and arrowheads that contradict compelled ancestry."""
+    from .graph import DAG
+
+    matrix = graph.graph
+    directed = tuple(
+        (names[i], names[j])
+        for i in range(len(names))
+        for j in range(len(names))
+        if matrix[i, j] == -1 and matrix[j, i] == 1
+    )
+    try:
+        dag = DAG(tuple(names), directed)
+    except ValueError:
+        return False
+    for i, j in itertools.combinations(range(len(names)), 2):
+        if matrix[i, j] == 1 and names[j] in dag.descendants((names[i],)):
+            return False
+        if matrix[j, i] == 1 and names[i] in dag.descendants((names[j],)):
+            return False
+        if matrix[i, j] == matrix[j, i] == -1 and (
+            np.any(matrix[i, :] == 1) or np.any(matrix[j, :] == 1)
+        ):
+            return False
+    return True
+
+
 def run(request):
     """Run the backend and return partial marks without claiming a unique causal graph."""
     tracker = {
@@ -159,7 +186,16 @@ def run(request):
                     node_names=request["names"],
                     tracker=tracker,
                 )
-                kind, status = "pag", "completed"
+                kind, status = (
+                    "pag",
+                    "completed"
+                    if _ancestral_consistent(graph, request["names"])
+                    else "inconsistent",
+                )
+                if status == "inconsistent":
+                    diagnostics["warnings"].append(
+                        "Compelled endpoint marks violate ancestral constraints; interpret no causal conclusions"
+                    )
             diagnostics["warnings"].extend(str(w.message) for w in caught)
         marks = {-1: "tail", 1: "arrow", 2: "circle"}
         edges = []

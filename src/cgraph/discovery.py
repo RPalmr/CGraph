@@ -27,7 +27,11 @@ class PartialEdge:
 
     def __post_init__(self):
         if (
-            self.left >= self.right
+            not isinstance(self.left, str)
+            or not isinstance(self.right, str)
+            or not self.left
+            or not self.right
+            or self.left >= self.right
             or self.left_mark not in ("tail", "arrow", "circle")
             or self.right_mark not in ("tail", "arrow", "circle")
         ):
@@ -145,6 +149,19 @@ class DiscoveryResult:
             "error",
         ):
             raise ValueError("Unknown discovery status")
+        if self.method not in ("pc", "fci") or not isinstance(self.diagnostics, Mapping):
+            raise ValueError("Invalid discovery method or diagnostic record")
+        if any(not isinstance(a, str) or not a for a in self.assumptions):
+            raise ValueError("Assumptions must be nonempty descriptions")
+        if self.graph is not None:
+            if (
+                not isinstance(self.graph, PartialGraph)
+                or (self.method == "pc" and self.graph.kind == "pag")
+                or (self.method == "fci" and self.graph.kind != "pag")
+            ):
+                raise ValueError("Graph class does not match the discovery method")
+            if self.status == "completed" and self.graph.kind == "pdag":
+                raise ValueError("An inconsistent PDAG is not a completed equivalence graph")
         if self.status == "completed" and self.graph is None:
             raise ValueError("Completed discovery requires a graph")
         object.__setattr__(self, "assumptions", tuple(self.assumptions))
@@ -195,6 +212,8 @@ class DiscoveryResult:
         try:
             graph = value["graph"]
             if graph is not None:
+                if not isinstance(graph, dict) or set(graph) != {"nodes", "edges", "kind"}:
+                    raise ValueError("Invalid partial graph schema")
                 value["graph"] = PartialGraph(
                     tuple(graph["nodes"]),
                     tuple(PartialEdge(**e) for e in graph["edges"]),
