@@ -49,6 +49,10 @@ class ADMG:
             raise ValueError("DAG cannot contain bidirected edges")
         _ = self.topological_order
 
+    def __deepcopy__(self, memo):
+        """Share immutable graph state safely when cloning estimator parameters."""
+        return self
+
     @cached_property
     def parents(self) -> dict[str, frozenset[str]]:
         """Return immutable parent sets indexed by node."""
