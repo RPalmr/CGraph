@@ -1,6 +1,6 @@
 # CGraph
 
-CGraph translates causal graphs into mathematical expressions for how a system behaves and how interventions change it. It determines whether an intervention's effect can be derived from observational probabilities using the supplied graph.
+CGraph uses causal graphs to model how a system behaves and how interventions change it. Given the graph's assumptions, it determines which intervention effects can be identified from observations.
 
 Three operations: **factorisation, intervention and identification**. Python 3.11+, with no runtime dependencies.
 
