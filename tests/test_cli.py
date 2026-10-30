@@ -50,7 +50,6 @@ def test_data_first_discovery_cli(tmp_path):
     np.savetxt(data, np.column_stack((a, b, c)), delimiter=",", header="A,B,C", comments="")
     output = tmp_path / "discovered.json"
     dot = tmp_path / "discovered.dot"
-    grapl = tmp_path / "discovered.grapl"
     assert (
         main(
             [
@@ -61,8 +60,6 @@ def test_data_first_discovery_cli(tmp_path):
                 str(output),
                 "--dot",
                 str(dot),
-                "--grapl",
-                str(grapl),
                 "--timeout",
                 "60",
             ]
@@ -73,4 +70,36 @@ def test_data_first_discovery_cli(tmp_path):
     assert value["graph"]["kind"] == "cpdag"
     assert value["status"] == "completed"
     assert dot.read_text().startswith("digraph CGraph")
-    assert grapl.read_text() == '"CGraph";\nA;\nB;\nC;\nA -> C;\nB -> C;\n'
+
+
+def test_discovery_cli_rejects_colliding_output_and_input_paths(monkeypatch, tmp_path):
+    import cgraph.cli as cli
+
+    data = tmp_path / "input.csv"
+    original = "A,B\n1,2\n"
+    data.write_text(original)
+    calls = []
+
+    def discover(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("Invalid paths must be rejected before discovery")
+
+    monkeypatch.setattr(cli, "discover", discover)
+    output = str(tmp_path / "result.json")
+    for options in (["--out", output, "--dot", output], ["--out", str(data)], ["--dot", str(data)]):
+        assert cli.main(["discover", "--data", str(data), *options]) == 2
+    assert not calls
+    assert data.read_text() == original
+
+
+def test_discovery_cli_retains_resource_failure_evidence(monkeypatch, tmp_path):
+    import cgraph.cli as cli
+    from cgraph import DiscoveryResult
+
+    data = tmp_path / "input.csv"
+    data.write_text("A,B\n1,2\n")
+    limited = DiscoveryResult("resource_limited", None, "pc", (), {"reason": "Test budget"})
+    monkeypatch.setattr(cli, "discover", lambda *args, **kwargs: limited)
+    output = tmp_path / "failure.json"
+    assert cli.main(["discover", "--data", str(data), "--out", str(output)]) == 4
+    assert DiscoveryResult.from_json(output.read_text()).status == "resource_limited"

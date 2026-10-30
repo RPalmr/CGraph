@@ -183,12 +183,6 @@ class ADMG:
                     queue.extend((p, True) for p in parents[node])
         return True
 
-    def to_grapl(self, path=None, *, title="CGraph", node_names=None):
-        """Export this explicit causal graph in the native GRAPL text grammar."""
-        from .grapl import to_grapl
-
-        return to_grapl(self, path, title=title, node_names=node_names)
-
     def to_dict(self) -> dict:
         """Serialize the graph without cached implementation details."""
         return {

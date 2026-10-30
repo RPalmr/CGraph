@@ -5,7 +5,7 @@ from .distributions import InterventionDistribution, factorize, intervene
 from .graph import ADMG, DAG
 from .symbolic import DiscreteDistribution, Expression, IdentificationResult, identify
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = [
     "discover",
     "DiscoveryResult",

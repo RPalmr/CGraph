@@ -12,14 +12,14 @@ import zipfile
 
 def main():
     """Validate built artifacts in an isolated environment and execute the wheel's example."""
-    wheel = pathlib.Path("dist/cgraph_audit-0.4.0-py3-none-any.whl").resolve()
+    wheel = pathlib.Path("dist/cgraph_audit-0.5.0-py3-none-any.whl").resolve()
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
         assert any(n.endswith("METADATA") for n in names)
-        assert "cgraph/grapl.py" in names
+        assert "cgraph/grapl.py" not in names
         assert not any(n.startswith("GRAPL/") for n in names)
         assert not any(n.startswith(("docs/", ".codex/", "private/", "artifacts/")) for n in names)
-    with tarfile.open("dist/cgraph_audit-0.4.0.tar.gz") as archive:
+    with tarfile.open("dist/cgraph_audit-0.5.0.tar.gz") as archive:
         names = archive.getnames()
         assert not any("/docs/" in n or "/.codex/" in n or "/artifacts/" in n for n in names)
     with tempfile.TemporaryDirectory(prefix="cgraph-core-smoke-") as directory:
@@ -40,9 +40,7 @@ def main():
         check=True,
         env={**os.environ, "PYTHONPATH": str(wheel)},
     )
-    native = pathlib.Path("artifacts/discovery/collider_pc.grapl").read_text()
-    assert "A -> C;" in native and "B -> C;" in native
-    print("Native GRAPL wheel output verified; reference checkout and private artifacts excluded")
+    print("Wheel and source distribution contain no reference checkout or private artifacts")
 
 
 if __name__ == "__main__":
