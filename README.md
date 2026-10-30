@@ -1,6 +1,8 @@
 # CGraph
 
-Three operations for symbolic causal inference: **factorisation, intervention and identification**. Python 3.11+, with no runtime dependencies.
+CGraph translates causal graphs into mathematical expressions for how a system behaves and how interventions change it. It determines whether an intervention's effect can be derived from observational probabilities using the supplied graph.
+
+Three operations: **factorisation, intervention and identification**. Python 3.11+, with no runtime dependencies.
 
 ## Factorisation
 
