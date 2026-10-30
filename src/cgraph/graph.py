@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import itertools
 import json
 from collections import deque
 from collections.abc import Iterable, Mapping
@@ -223,83 +222,3 @@ class ADMG:
 @dataclass(frozen=True)
 class DAG(ADMG):
     """Observed-variable causal DAG without bidirected edges."""
-
-
-@dataclass(frozen=True)
-class AdjustmentResult:
-    """Outcome of the complete DAG adjustment criterion for total effects."""
-
-    valid: bool
-    reason: str
-    forbidden: tuple[str, ...] = ()
-
-
-def validate_adjustment(graph: DAG, treatment, outcome, adjustment) -> AdjustmentResult:
-    """Apply the forbidden-set and proper-backdoor criterion for DAG total effects."""
-    if not isinstance(graph, DAG):
-        raise ValueError("Adjustment validation currently requires a DAG")
-    x, y, z = (graph.validate_nodes(v) for v in (treatment, outcome, adjustment))
-    if not x or not y or x & y or (x | y) & z:
-        raise ValueError("Treatment, outcome, and adjustment must be disjoint; targets nonempty")
-    without_incoming = graph.intervene(x)
-    without_outgoing = DAG(graph.nodes, tuple((u, v) for u, v in graph.directed if u not in x))
-    causal = (without_incoming.descendants(x) - x) & without_outgoing.ancestors(y)
-    forbidden = without_incoming.descendants(causal)
-    if z & forbidden:
-        return AdjustmentResult(
-            False,
-            "Adjustment contains a forbidden causal-path descendant",
-            tuple(sorted(z & forbidden)),
-        )
-    backdoor = DAG(
-        graph.nodes, tuple((u, v) for u, v in graph.directed if not (u in x and v in causal))
-    )
-    if not backdoor.separated(x, y, z):
-        return AdjustmentResult(False, "Adjustment leaves an open noncausal path")
-    return AdjustmentResult(True, "Adjustment satisfies the DAG adjustment criterion")
-
-
-def find_adjustment(
-    graph: DAG, treatment, outcome, *, max_sets: int = 10000
-) -> tuple[str, ...] | None:
-    """Find a minimum-cardinality set; raise on exhaustion of the computational budget."""
-    x, y = graph.validate_nodes(treatment), graph.validate_nodes(outcome)
-    if max_sets < 1:
-        raise ValueError("max_sets must be positive")
-    candidates = sorted(graph.ancestors(x | y) - x - y)
-    checked = 0
-    for size in range(len(candidates) + 1):
-        for z in itertools.combinations(candidates, size):
-            if checked >= max_sets:
-                raise TimeoutError("Adjustment search budget exhausted")
-            checked += 1
-            if validate_adjustment(graph, x, y, z).valid:
-                return z
-    return None
-
-
-def latent_projection(graph: DAG, observed: Iterable[str]) -> ADMG:
-    """Project a DAG by tracing latent-only directed paths and latent common ancestors."""
-    if not isinstance(graph, DAG):
-        raise ValueError("Projection requires an explicit DAG")
-    observed = graph.validate_nodes(observed)
-    latent = set(graph.nodes) - observed
-
-    def frontier(start):
-        reached, seen, stack = set(), set(), list(graph.children[start])
-        while stack:
-            n = stack.pop()
-            if n in seen:
-                continue
-            seen.add(n)
-            if n in observed:
-                reached.add(n)
-            else:
-                stack.extend(graph.children[n])
-        return reached
-
-    directed = {(u, v) for u in observed for v in frontier(u)}
-    bidirected = {
-        tuple(sorted(pair)) for u in latent for pair in itertools.combinations(frontier(u), 2)
-    }
-    return ADMG(tuple(observed), tuple(directed), tuple(bidirected))

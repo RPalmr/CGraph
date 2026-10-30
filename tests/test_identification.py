@@ -4,28 +4,28 @@ import itertools
 
 import pytest
 
-from cgraph import ADMG, DAG, CausalQuery
-from cgraph.symbolic import DiscreteDistribution, identify, identify_family, verify_hedge
+from cgraph import ADMG, DAG
+from cgraph.symbolic import DiscreteDistribution, identify, verify_hedge
 
 
 def test_backdoor_bow_and_budget():
-    query = CausalQuery.interventional(treatment="t", outcome="y")
     dag = DAG(("z", "t", "y"), (("z", "t"), ("z", "y"), ("t", "y")))
-    result = identify(dag, query)
+    result = identify(dag, treatment="t", outcome="y")
     assert result.status == "identified"
     assert result.expression.free == {"t", "y"}
     bow = ADMG(("t", "y"), (("t", "y"),), (("t", "y"),))
-    failure = identify(bow, query)
+    failure = identify(bow, treatment="t", outcome="y")
     assert failure.status == "not_identified"
     assert verify_hedge(failure.witness)
-    assert identify(dag, query, max_calls=1).status == "resource_limited"
-    family = identify_family([dag, bow], query)
-    assert not family["common_functional_established"]
+    assert (
+        identify(dag, treatment="t", outcome="y", method="id", max_calls=1).status
+        == "resource_limited"
+    )
 
 
 def test_frontdoor_against_explicit_latent_intervention():
     graph = ADMG(("t", "m", "y"), (("t", "m"), ("m", "y")), (("t", "y"),))
-    result = identify(graph, CausalQuery.interventional(treatment="t", outcome="y"))
+    result = identify(graph, treatment="t", outcome="y")
     assert result.status == "identified"
     masses = {}
     for u, t, m, y in itertools.product((0, 1), repeat=4):
@@ -51,7 +51,7 @@ def test_all_three_node_admgs_have_valid_results_and_certificates():
             tuple(e for i, e in enumerate(edges) if bidirected_mask & (1 << i)),
         )
         for t, y in itertools.permutations(nodes, 2):
-            result = identify(graph, CausalQuery.interventional(treatment=t, outcome=y))
+            result = identify(graph, treatment=t, outcome=y)
             assert result.status in ("identified", "not_identified")
             if result.witness:
                 assert verify_hedge(result.witness)
@@ -97,49 +97,8 @@ def test_random_admgs_against_exact_latent_scm_interventions():
 
         observational = joint()
         for t, y in itertools.permutations(nodes, 2):
-            result = identify(graph, CausalQuery.interventional(treatment=t, outcome=y))
+            result = identify(graph, treatment=t, outcome=y)
             if result.status == "identified":
                 actual = result.expression.evaluate(observational, {t: 1, y: 1})
                 expected = joint((t, 1)).probability({y: 1})
                 assert actual == pytest.approx(expected, abs=1e-10), (graph, t, y, result)
-            from cgraph.symbolic import identify_conditional
-
-            conditioned = next(v for v in nodes if v not in (t, y))
-            conditional = identify_conditional(
-                graph, CausalQuery.interventional(treatment=t, outcome=y), given=(conditioned,)
-            )
-            if conditional.status == "identified":
-                intervened = joint((t, 1))
-                expected_conditional = intervened.probability(
-                    {y: 1, conditioned: 1}
-                ) / intervened.probability({conditioned: 1})
-                actual_conditional = conditional.expression.evaluate(
-                    observational, {t: 1, y: 1, conditioned: 1}
-                )
-                assert actual_conditional == pytest.approx(expected_conditional, abs=1e-10)
-
-
-def test_conditional_identification_uses_exchange_before_joint_identification():
-    from cgraph.symbolic import identify_conditional
-
-    graph = ADMG(("x", "z", "y"), (("x", "z"), ("z", "y")), (("x", "z"),))
-    query = CausalQuery.interventional(treatment="x", outcome="y")
-    assert identify(graph, query).status == "not_identified"
-    result = identify_conditional(graph, query, given=("z",))
-    assert result.status == "identified"
-    assert result.trace[0]["rule"] == "idc_exchange_observation"
-    with pytest.raises(TypeError):
-        result.trace[0]["rule"] = "modified"
-    with pytest.raises(ValueError):
-        identify_conditional(graph, query, given=("x",))
-
-
-def test_structural_scenarios_and_joint_intervention():
-    from cgraph.scenarios import add_latent_confounding, audit_graph_scenarios
-
-    graph = DAG(("a", "b", "y"), (("a", "y"), ("b", "y")))
-    query = CausalQuery.interventional(treatment=("a", "b"), outcome="y")
-    assert identify(graph, query).status == "identified"
-    scenario = add_latent_confounding(graph, (("a", "y"),))
-    check = audit_graph_scenarios(graph, query, [("hidden_common_cause", scenario)])
-    assert check.metrics["scenarios"][0]["identification"]["status"] == "not_identified"

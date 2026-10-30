@@ -10,9 +10,8 @@ from dataclasses import dataclass
 from functools import cached_property
 from types import MappingProxyType
 
+from ._serialization import freeze, thaw
 from .graph import ADMG
-from .query import CausalQuery
-from .reports import freeze, thaw
 
 
 @dataclass(frozen=True)
@@ -92,7 +91,12 @@ class Expression:
                 raise ValueError("Conditional probability outside observed support")
             return numerator / denominator
         if self.op == "product":
-            return math.prod(t.evaluate(distribution, assignment) for t in self.terms)
+            result = 1.0
+            for term in self.terms:
+                result *= term.evaluate(distribution, assignment)
+                if result == 0:
+                    break
+            return result
         if self.op == "quotient":
             denominator = self.terms[1].evaluate(distribution, assignment)
             if denominator <= 0:
@@ -195,6 +199,8 @@ class IdentificationResult:
     trace: tuple[dict, ...] = ()
     witness: dict | None = None
     reason: str = ""
+    method: str = "id"
+    adjustment: tuple[str, ...] | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "trace", tuple(freeze(v) for v in self.trace))
@@ -204,6 +210,8 @@ class IdentificationResult:
         """Serialize the result and its algorithm certificate."""
         return {
             "status": self.status,
+            "method": self.method,
+            "adjustment": list(self.adjustment) if self.adjustment is not None else None,
             "expression": self.expression.to_dict() if self.expression else None,
             "formula": str(self.expression) if self.expression else None,
             "trace": thaw(self.trace),
@@ -283,14 +291,42 @@ def verify_hedge(certificate: dict) -> bool:
 
 
 def identify(
-    graph: ADMG, query: CausalQuery, *, max_calls: int = 10000, timeout: float = 10.0
+    graph: ADMG,
+    *,
+    treatment,
+    outcome,
+    method="auto",
+    max_sets=10000,
+    max_calls: int = 10000,
+    timeout: float = 10.0,
 ) -> IdentificationResult:
     """Apply Shpitser–Pearl ID to a joint intervention under a semi-Markovian ADMG."""
-    if max_calls < 1 or not math.isfinite(timeout) or timeout <= 0:
+    if type(max_calls) is not int or max_calls < 1 or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("Identification budgets must be positive and finite")
-    graph.validate_nodes(query.treatment + query.outcome)
+    x, y = graph.validate_nodes(treatment), graph.validate_nodes(outcome)
+    if not x or not y or x & y:
+        raise ValueError("Treatment and outcome sets must be nonempty and disjoint")
+    if method not in ("auto", "id") or type(max_sets) is not int or max_sets < 1:
+        raise ValueError("Use method auto/id and a positive integer max_sets")
     deadline, trace, calls = time.monotonic() + timeout, [], 0
     memo = {}
+    if method == "auto" and len(x) == 1:
+        try:
+            adjustment = _find_backdoor(graph, x, y, max_sets, deadline)
+        except TimeoutError:
+            adjustment = None
+        if adjustment is not None:
+            expression = marginal(
+                adjustment, product((probability(y, x | set(adjustment)), probability(adjustment)))
+            )
+            return IdentificationResult(
+                "identified",
+                expression,
+                ({"rule": "backdoor", "adjustment": list(adjustment)},),
+                reason="Identified by the sufficient back-door criterion under the supplied causal graph",
+                method="backdoor",
+                adjustment=adjustment,
+            )
 
     def solve(y, x, p, g):
         nonlocal calls
@@ -341,10 +377,8 @@ def identify(
         return result
 
     try:
-        expression = solve(
-            frozenset(query.outcome), frozenset(query.treatment), probability(graph.nodes), graph
-        )
-        extra = expression.free - set(query.treatment) - set(query.outcome)
+        expression = solve(y, x, probability(graph.nodes), graph)
+        extra = expression.free - x - y
         if extra:
             trace.append(
                 {"rule": "average_invariant_augmented_assignments", "variables": sorted(extra)}
@@ -371,103 +405,18 @@ def identify(
         )
 
 
-def identify_family(graphs, query, *, max_graphs=100, **kwargs):
-    """Audit a finite graph family without treating enumeration fractions as probabilities."""
-    if max_graphs < 1:
-        raise ValueError("max_graphs must be positive")
-    results = []
-    truncated = False
-    for graph in graphs:
-        if len(results) >= max_graphs:
-            truncated = True
-            break
-        results.append(identify(graph, query, **kwargs))
-    if not results:
-        raise ValueError("Graph family must be nonempty")
-    expressions = {r.expression for r in results if r.status == "identified"}
-    common = (
-        not truncated and all(r.status == "identified" for r in results) and len(expressions) == 1
+def _find_backdoor(graph, x, y, max_sets, deadline):
+    """Find a minimum-cardinality nondescendant set blocking all back-door paths."""
+    candidates = sorted(graph.ancestors(x | y) - graph.descendants(x) - y)
+    backdoor = type(graph)(
+        graph.nodes, tuple((u, v) for u, v in graph.directed if u not in x), graph.bidirected
     )
-    return {
-        "results": [r.to_dict() for r in results],
-        "truncated": truncated,
-        "common_functional_established": common,
-        "reason": "Structural expression equality is sufficient; unequal expressions are not proof of different functionals",
-    }
-
-
-def identify_conditional(
-    graph: ADMG, query: CausalQuery, given, *, max_calls=10000, timeout=10.0
-) -> IdentificationResult:
-    """Apply IDC to P(outcome | do(treatment), given) under the supplied ADMG.
-
-    Rule two exchanges eligible observations for interventions. Remaining
-    conditioning is performed only after identifying the required joint kernel.
-    A ratio of arbitrary ID outputs is not used as a substitute for IDC.
-    """
-    if query.kind != "interventional":
-        raise ValueError("IDC requires an interventional distribution query")
-    if max_calls < 1 or not math.isfinite(timeout) or timeout <= 0:
-        raise ValueError("Identification budgets must be positive and finite")
-    x, y, z = (graph.validate_nodes(nodes) for nodes in (query.treatment, query.outcome, given))
-    if (x | y) & z:
-        raise ValueError("Conditioning variables must be disjoint from query targets")
-    trace, deadline, calls = [], time.monotonic() + timeout, 0
-    while z:
-        moved = False
-        for node in sorted(z):
-            calls += 1
-            if calls >= max_calls or time.monotonic() > deadline:
-                return IdentificationResult(
-                    "resource_limited",
-                    trace=tuple(trace),
-                    reason="Conditional identification budget exhausted",
-                )
-            mutilated = graph.intervene(x)
-            mutilated = ADMG(
-                mutilated.nodes,
-                tuple((a, b) for a, b in mutilated.directed if a != node),
-                mutilated.bidirected,
-            )
-            if mutilated.separated(y, (node,), x | (z - {node})):
-                trace.append(
-                    {
-                        "rule": "idc_exchange_observation",
-                        "variable": node,
-                        "treatment": sorted(x),
-                        "given": sorted(z),
-                    }
-                )
-                x, z = x | {node}, z - {node}
-                moved = True
-                break
-        if not moved:
-            break
-    remaining_time = deadline - time.monotonic()
-    if remaining_time <= 0:
-        return IdentificationResult(
-            "resource_limited",
-            trace=tuple(trace),
-            reason="Conditional identification deadline reached",
-        )
-    joint = identify(
-        graph,
-        CausalQuery.interventional(treatment=tuple(x), outcome=tuple(y | z)),
-        max_calls=max_calls - calls,
-        timeout=remaining_time,
-    )
-    trace.extend(joint.trace)
-    if joint.status != "identified":
-        return IdentificationResult(
-            joint.status, trace=tuple(trace), witness=joint.witness, reason=joint.reason
-        )
-    expression = joint.expression
-    if z:
-        expression = Expression("quotient", terms=(expression, marginal(y, expression)))
-        trace.append({"rule": "idc_normalize", "outcome": sorted(y), "given": sorted(z)})
-    return IdentificationResult(
-        "identified",
-        expression,
-        tuple(trace),
-        reason="Conditional identification under the supplied semi-Markovian graph and observed support",
-    )
+    checked = 0
+    for size in range(len(candidates) + 1):
+        for z in itertools.combinations(candidates, size):
+            if checked >= max_sets or time.monotonic() > deadline:
+                raise TimeoutError("Back-door search budget exhausted")
+            checked += 1
+            if backdoor.separated(x, y, z):
+                return z
+    return None

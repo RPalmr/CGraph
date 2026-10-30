@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install '.[stats]' pytest hypothesis networkx ruff build
+      - run: python -m pip install '.' pytest networkx ruff build
       - run: ruff check src tests examples benchmarks scripts
       - run: ruff format --check src tests examples benchmarks scripts
       - run: pytest -q
@@ -31,4 +31,4 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install .
-      - run: python -c "from cgraph import DAG, CausalQuery, identify; assert identify(DAG(('t','y'),(('t','y'),)), CausalQuery.interventional(treatment='t', outcome='y')).status == 'identified'"
+      - run: python -c "from cgraph import DAG, identify; assert identify(DAG(('t','y'),(('t','y'),)), treatment='t', outcome='y').status == 'identified'"

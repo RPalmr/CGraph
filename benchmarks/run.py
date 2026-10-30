@@ -5,8 +5,8 @@ import platform
 import statistics
 import time
 
-from cgraph import DAG, CausalQuery, identify
-from cgraph.reports import atomic_write
+from cgraph import DAG, identify
+from cgraph._serialization import atomic_write
 
 
 def measure(fn, repetitions=20):
@@ -31,7 +31,6 @@ def main():
     )
     graph = DAG(nodes, edges)
     confounded = DAG(("z", "t", "y"), (("z", "t"), ("z", "y"), ("t", "y")))
-    query = CausalQuery.interventional(treatment="t", outcome="y")
     results = {
         "python": platform.python_version(),
         "platform": platform.platform(),
@@ -39,7 +38,7 @@ def main():
         "edges": len(edges),
         "validation": measure(lambda: DAG(nodes, edges)),
         "separation": measure(lambda: graph.separated((nodes[0],), (nodes[-1],), nodes[450:455])),
-        "identification_small": measure(lambda: identify(confounded, query)),
+        "identification_small": measure(lambda: identify(confounded, treatment="t", outcome="y")),
     }
     content = json.dumps(results, indent=2) + "\n"
     atomic_write("artifacts/benchmarks/local.json", content)

@@ -5,7 +5,7 @@ import itertools
 import networkx as nx
 import pytest
 
-from cgraph import ADMG, DAG, find_adjustment, latent_projection, validate_adjustment
+from cgraph import ADMG, DAG
 
 
 def test_graph_validation_and_interventions():
@@ -41,20 +41,6 @@ def test_exhaustive_four_node_dags_against_networkx():
             for flags in itertools.product((False, True), repeat=len(remaining)):
                 z = {v for v, keep in zip(remaining, flags, strict=True) if keep}
                 assert graph.separated(a, b, z) == nx.is_d_separator(oracle, {a}, {b}, z)
-
-
-def test_adjustment_and_projection():
-    graph = DAG(("z", "t", "y"), (("z", "t"), ("z", "y"), ("t", "y")))
-    assert not validate_adjustment(graph, "t", "y", ()).valid
-    assert find_adjustment(graph, "t", "y") == ("z",)
-    mediation = DAG(("t", "m", "y"), (("t", "m"), ("m", "y")))
-    assert not validate_adjustment(mediation, "t", "y", ("m",)).valid
-    latent = DAG(("u", "t", "y"), (("u", "t"), ("u", "y"), ("t", "y")))
-    projected = latent_projection(latent, ("t", "y"))
-    assert projected.bidirected == (("t", "y"),)
-    assert projected.directed == (("t", "y"),)
-    with pytest.raises(TimeoutError):
-        find_adjustment(graph, "t", "y", max_sets=1)
 
 
 def test_admg_separation_against_explicit_latent_dag_oracle():
