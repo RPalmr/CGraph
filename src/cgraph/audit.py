@@ -93,6 +93,18 @@ class CausalAudit(BaseEstimator):
         self.random_state = random_state
         self.study_design = study_design
 
+    def _reset_fitted(self):
+        for key in tuple(self.__dict__):
+            if key.endswith("_") and not key.startswith("__"):
+                delattr(self, key)
+
+    def set_params(self, **params):
+        """Invalidate fitted evidence when estimator parameters change."""
+        result = super().set_params(**params)
+        if params:
+            self._reset_fitted()
+        return result
+
     def _frame(self, X, y):
         outcome = validate_frame(X, y)
         if len(self.query.outcome) != 1:
@@ -179,6 +191,7 @@ class CausalAudit(BaseEstimator):
 
     def fit(self, X, y, *, schema=None, assumptions=(), dataset_id="training"):
         """Fit supported nuisance models and preserve a training audit snapshot."""
+        self._reset_fitted()
         if self.study_design != "iid":
             raise ValueError(
                 "Statistical auditing currently requires independent observational units"

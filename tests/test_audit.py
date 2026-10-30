@@ -48,3 +48,14 @@ def test_nonidentification_and_wrong_adjustment_block_estimation():
     assert wrong.audit_report().identification["status"] == "identified"
     with pytest.raises(ValueError, match="independent"):
         CausalAudit(dag, audit.query, study_design="clustered").fit(X, y)
+
+
+def test_changing_parameters_invalidates_fitted_evidence():
+    from sklearn.exceptions import NotFittedError
+
+    X, y = data(5)
+    graph = DAG(("z", "t", "y"), (("z", "t"), ("z", "y"), ("t", "y")))
+    model = CausalAudit(graph, CausalQuery.ate(treatment="t", outcome="y")).fit(X, y)
+    model.set_params(random_state=9)
+    with pytest.raises(NotFittedError):
+        model.audit_report()

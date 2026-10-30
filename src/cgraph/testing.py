@@ -30,6 +30,11 @@ class GaussianPartialCorrelation:
             return {"status": "unsupported", "reason": "Gaussian test requires numeric inputs"}
         if not np.isfinite(values).all():
             return {"status": "insufficient_data", "reason": "Missing or nonfinite test inputs"}
+        if any(len(np.unique(values[:, i])) <= 2 for i in range(values.shape[1])):
+            return {
+                "status": "unsupported",
+                "reason": "Binary or constant variables cannot be treated as a Gaussian subvector",
+            }
         n, k = len(values), len(given)
         if n <= k + 3:
             return {

@@ -93,6 +93,18 @@ class AIPW(BaseEstimator):
         self.overlap_threshold = overlap_threshold
         self.random_state = random_state
 
+    def _reset_fitted(self):
+        for key in tuple(self.__dict__):
+            if key.endswith("_") and not key.startswith("__"):
+                delattr(self, key)
+
+    def set_params(self, **params):
+        """Invalidate fitted evidence when estimator parameters change."""
+        result = super().set_params(**params)
+        if params:
+            self._reset_fitted()
+        return result
+
     def _inputs(self, X, y, treatment, control, treated):
         outcome = validate_frame(X, y)
         if self.adjustment is None:
@@ -154,6 +166,8 @@ class AIPW(BaseEstimator):
         if np.any((e <= 1e-10) | (e >= 1 - 1e-10)):
             raise ValueError("Numerically unsupported propensity scores; no clipping was applied")
         scores = m1 - m0 + t * (y - m1) / e - (1 - t) * (y - m0) / (1 - e)
+        if not np.isfinite(scores).all():
+            raise ValueError("Numerical overflow in AIPW scores")
         value, se = float(np.mean(scores)), float(np.std(scores, ddof=1) / np.sqrt(len(y)))
         radius = float(norm.ppf((1 + self.confidence_level) / 2) * se)
         estimate = EffectEstimate(
@@ -196,6 +210,7 @@ class AIPW(BaseEstimator):
 
     def fit(self, X, y, *, treatment, control=0, treated=1):
         """Cross-fit nuisance learners, estimate ATE, and fit final models for holdout scoring."""
+        self._reset_fitted()
         if (
             not isinstance(self.cv, int)
             or self.cv < 2

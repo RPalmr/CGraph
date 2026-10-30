@@ -1,5 +1,6 @@
 """Explicit causal queries and numerical treatment contrasts."""
 
+import math
 from dataclasses import dataclass
 
 
@@ -27,6 +28,13 @@ class CausalQuery:
             object.__setattr__(self, field, tuple(sorted(values)))
         if set(self.treatment) & set(self.outcome):
             raise ValueError("Treatment and outcome must be disjoint")
+        if not isinstance(self.target_population, str) or not self.target_population:
+            raise ValueError("Target population must be a nonempty description")
+        if any(
+            not isinstance(v, (int, float)) or not math.isfinite(v)
+            for v in (self.control, self.treated)
+        ):
+            raise ValueError("Treatment contrast levels must be finite numeric values")
         if self.kind not in ("interventional", "ate"):
             raise ValueError("Unsupported query kind")
         if self.kind == "ate" and (

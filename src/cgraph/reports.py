@@ -117,6 +117,15 @@ class Policy:
     require_declared_assumptions: bool = True
     version: str = "1"
 
+    def __post_init__(self):
+        if any(
+            type(getattr(self, field)) is not bool
+            for field in ("require_estimate", "require_empirical", "require_declared_assumptions")
+        ):
+            raise ValueError("Policy switches must be JSON booleans")
+        if not isinstance(self.version, str) or not self.version:
+            raise ValueError("Policy version must be a nonempty string")
+
 
 @dataclass(frozen=True)
 class PolicyDecision:
