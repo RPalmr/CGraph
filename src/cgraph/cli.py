@@ -53,7 +53,8 @@ def main(argv=None):
     discovery.add_argument("--timeout", type=float, default=30.0)
     discovery.add_argument("--max-tests", type=int, default=10000)
     discovery.add_argument("--max-conditioning", type=int)
-    discovery.add_argument("--out")
+    discovery.add_argument("--out", help="JSON result or native graph when the suffix is .grapl")
+    discovery.add_argument("--grapl", help="Optional native GRAPL graph alongside a JSON result")
     discovery.add_argument("--dot")
     args = parser.parse_args(argv)
     try:
@@ -73,9 +74,23 @@ def main(argv=None):
                 max_tests=args.max_tests,
                 max_conditioning=args.max_conditioning,
             )
-            content = result.to_json(args.out)
-            if not args.out:
-                print(content, end="")
+            out_native = args.out is not None and Path(args.out).suffix.lower() == ".grapl"
+            if out_native and args.grapl:
+                raise ValueError("Use either --out graph.grapl or --grapl graph.grapl, not both")
+            native_path = args.out if out_native else args.grapl
+            if result.status != "completed":
+                content = result.to_json(None if out_native else args.out)
+                if out_native:
+                    print(content, end="", file=sys.stderr)
+                elif not args.out:
+                    print(content, end="")
+                return 5 if result.status == "error" else 4
+            if native_path:
+                result.to_grapl(native_path)
+            if not out_native:
+                content = result.to_json(args.out)
+                if not args.out:
+                    print(content, end="")
             if args.dot and result.graph:
                 atomic_write(args.dot, result.graph.to_dot())
             return 0 if result.status == "completed" else 5 if result.status == "error" else 4

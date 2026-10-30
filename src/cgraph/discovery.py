@@ -117,6 +117,14 @@ class PartialGraph:
             "edges": [e.to_dict() for e in self.edges],
         }
 
+    def to_grapl(self, path=None, *, title="CGraph", node_names=None):
+        """Export a fully directed CPDAG; native GRAPL cannot encode CPDAG/PAG uncertainty."""
+        if self.kind != "cpdag" or len(self.directed) != len(self.edges):
+            raise ValueError(
+                "Native GRAPL cannot represent unresolved CPDAG/PAG graphs; only a fully directed CPDAG can be exported without changing its meaning"
+            )
+        return self.to_dag().to_grapl(path, title=title, node_names=node_names)
+
     def to_dot(self):
         """Export Graphviz notation without requiring Graphviz or executing a renderer."""
         marks = {"tail": "none", "arrow": "normal", "circle": "odot"}
@@ -186,6 +194,12 @@ class DiscoveryResult:
         if path is not None:
             atomic_write(path, content)
         return content
+
+    def to_grapl(self, path=None, *, title="CGraph", node_names=None):
+        """Write a completed discovery graph when native GRAPL can preserve its semantics."""
+        if self.status != "completed" or self.graph is None:
+            raise ValueError("GRAPL export requires a completed discovery result")
+        return self.graph.to_grapl(path, title=title, node_names=node_names)
 
     @classmethod
     def from_json(cls, content):

@@ -38,3 +38,5 @@ coverage.xml
 .mcp.json
 shared-notes/
 COMPACTION*.md
+
+/GRAPL/

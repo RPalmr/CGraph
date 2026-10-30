@@ -62,6 +62,21 @@ The current numerical path supports complete, finite, continuous numeric data an
 
 Only a fully directed CPDAG can be converted with `result.graph.to_dag()`. An unresolved CPDAG or a PAG is never silently converted into a causal DAG. `factorize`, `intervene` and `identify` remain available for reasoning under an explicit DAG/ADMG; they do not identify effects uniformly over an unresolved discovery result.
 
+## Native `.grapl` output
+
+```python
+result.to_grapl("artifacts/discovered.grapl")
+```
+
+The native [GRAPL grammar](https://github.com/max-little/GRAPL/blob/main/grapl/dsl.py) supports node declarations, `A -> B` and `A <-> B`. Explicit DAGs/ADMGs also expose `graph.to_grapl(path)`. Discovery export requires a completed, fully directed CPDAG. Unresolved CPDAGs and all PAGs are rejected: their meaning cannot be preserved by native GRAPL. No edge is dropped or arbitrarily oriented. JSON retains the full discovery result.
+
+```bash
+cgraph discover --data cohort.csv --out graph.grapl
+cgraph discover --data cohort.csv --out result.json --grapl graph.grapl
+```
+
+GRAPL identifiers allow ASCII letters/underscores followed by trailing digits. In Python, supply an explicit `node_names` mapping for incompatible labels and retain that mapping with the dataset metadata. The separate local `GRAPL/` checkout is an ignored interoperability reference, not a bundled dependency.
+
 ## Install and run
 
 Python 3.11+. Discovery uses pinned [causal-learn](https://github.com/py-why/causal-learn) implementations of [PC-stable](https://jmlr.org/papers/volume15/colombo14a/colombo14a.pdf) and [FCI](https://causal-learn.readthedocs.io/en/latest/search_methods_index/Constraint-based%20causal%20discovery%20methods/FCI.html).

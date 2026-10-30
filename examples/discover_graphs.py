@@ -15,6 +15,8 @@ def save_result(label, data, names, method, output):
     if result.status != "completed":
         raise RuntimeError(result.to_json())
     atomic_write(output / f"{label}.dot", result.graph.to_dot())
+    if result.graph.kind == "cpdag" and not result.graph.unresolved:
+        result.to_grapl(output / f"{label}.grapl", title=label)
     print(f"{label}: {result.graph.kind}; {len(result.tests)} unique CI tests")
     for edge in result.graph.edges:
         print(f"  {edge}")
@@ -48,7 +50,7 @@ def main():
     )
     assert any((e.left_mark, e.right_mark) == ("arrow", "arrow") for e in hidden.graph.edges)
     print("Graph recovery in these examples does not certify recovery on arbitrary real data.")
-    print(f"JSON, DOT and example CSV: {output}")
+    print(f"JSON, DOT, supported native GRAPL graphs and example CSV: {output}")
 
 
 def output_csv(output):
