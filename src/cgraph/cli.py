@@ -71,7 +71,13 @@ def _audit(args):
     settings = configuration.get("estimator")
     estimator = None
     if settings is not None:
-        if set(settings) - {"adjustment", "cv", "confidence_level", "overlap_threshold"}:
+        if set(settings) - {
+            "adjustment",
+            "cv",
+            "confidence_level",
+            "overlap_threshold",
+            "categorical",
+        }:
             raise ValueError("Unsupported estimator configuration")
         estimator = AIPW(**settings, random_state=configuration.get("random_state", 0))
     if Path(args.data).suffix.lower() != ".csv":

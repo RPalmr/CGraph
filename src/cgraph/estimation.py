@@ -9,11 +9,12 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from sklearn.base import BaseEstimator, clone
+from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.utils.validation import check_is_fitted
 
 
@@ -96,6 +97,7 @@ class AIPW(BaseEstimator):
         confidence_level=0.95,
         overlap_threshold=0.01,
         random_state=0,
+        categorical=(),
     ):
         self.adjustment = adjustment
         self.cv = cv
@@ -104,6 +106,7 @@ class AIPW(BaseEstimator):
         self.confidence_level = confidence_level
         self.overlap_threshold = overlap_threshold
         self.random_state = random_state
+        self.categorical = categorical
 
     def _reset_fitted(self):
         for key in tuple(self.__dict__):
@@ -124,6 +127,8 @@ class AIPW(BaseEstimator):
         names = tuple(self.adjustment)
         if len(set(names)) != len(names) or treatment in names:
             raise ValueError("Invalid adjustment variables")
+        if not set(self.categorical) <= set(names):
+            raise ValueError("Categorical variables must belong to the adjustment set")
         if treatment not in X or not set(names) <= set(X.columns):
             raise ValueError("Missing treatment or adjustment columns")
         levels = X[treatment].to_numpy()
@@ -142,17 +147,36 @@ class AIPW(BaseEstimator):
     def _models(self):
         if not self.adjustment:
             return DummyClassifier(strategy="prior"), DummyRegressor(strategy="mean")
+
+        def preprocessing():
+            if not self.categorical:
+                return StandardScaler()
+            positions = [i for i, name in enumerate(self.adjustment) if name in self.categorical]
+            continuous = [
+                i for i, name in enumerate(self.adjustment) if name not in self.categorical
+            ]
+            return ColumnTransformer(
+                [
+                    (
+                        "categorical",
+                        OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                        positions,
+                    ),
+                    ("continuous", StandardScaler(), continuous),
+                ]
+            )
+
         propensity = (
             self.propensity_model
             if self.propensity_model is not None
             else make_pipeline(
-                StandardScaler(), LogisticRegression(max_iter=2000, random_state=self.random_state)
+                preprocessing(), LogisticRegression(max_iter=2000, random_state=self.random_state)
             )
         )
         outcome = (
             self.outcome_model
             if self.outcome_model is not None
-            else make_pipeline(StandardScaler(), LinearRegression())
+            else make_pipeline(preprocessing(), LinearRegression())
         )
         return clone(propensity), clone(outcome)
 
@@ -208,7 +232,18 @@ class AIPW(BaseEstimator):
                 "effective_sample_size": float(w.sum() ** 2 / np.dot(w, w)),
                 "propensity_quantiles": np.quantile(e[mask], [0, 0.05, 0.5, 0.95, 1]).tolist(),
             }
+        diagnostics["weighted_category_differences"] = {}
         for i, name in enumerate(self.adjustment):
+            if name in self.categorical:
+                differences = {}
+                for category in np.unique(c[:, i]):
+                    indicator = (c[:, i] == category).astype(float)
+                    differences[str(category)] = float(
+                        np.average(indicator[t == 1], weights=weights[t == 1])
+                        - np.average(indicator[t == 0], weights=weights[t == 0])
+                    )
+                diagnostics["weighted_category_differences"][name] = differences
+                continue
             denominator = np.sqrt((np.var(c[t == 0, i]) + np.var(c[t == 1, i])) / 2)
             delta = np.average(c[t == 1, i], weights=weights[t == 1]) - np.average(
                 c[t == 0, i], weights=weights[t == 0]

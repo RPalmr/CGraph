@@ -58,3 +58,26 @@ def test_rosenbaum_exact_sign_and_pair_validation():
     assert paired["n_pairs"] == 2
     with pytest.raises(ValueError):
         rosenbaum_pairs([1, 2], [1, 1], ["a", "a"])
+
+
+def test_categorical_estimation_and_balance_are_invariant_to_numeric_labels():
+    rng = np.random.default_rng(39)
+    category = rng.integers(0, 3, size=800)
+    treatment = rng.binomial(1, np.array([0.3, 0.5, 0.7])[category])
+    outcome = 2 * treatment + (category == 1) * 4 - (category == 2) * 2 + rng.normal(size=800)
+    frame = pd.DataFrame({"category": category, "t": treatment})
+    fitted = AIPW(adjustment=("category",), categorical=("category",)).fit(
+        frame, outcome, treatment="t"
+    )
+    assert "category" not in fitted.diagnostics_["weighted_standardized_differences"]
+    assert set(fitted.diagnostics_["weighted_category_differences"]["category"]) == {
+        "0.0",
+        "1.0",
+        "2.0",
+    }
+    remapped = frame.copy()
+    remapped["category"] = frame["category"].map({0: 90, 1: -7, 2: 12})
+    second = AIPW(adjustment=("category",), categorical=("category",)).fit(
+        remapped, outcome, treatment="t"
+    )
+    assert fitted.estimate_.value == pytest.approx(second.estimate_.value, abs=1e-8)
